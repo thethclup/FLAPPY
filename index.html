@@ -1,13 +1,220 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Flappy Bird Klonu</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Flappy Bird Oyunu</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background: #87CEEB; }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  <script src="script.js"></script>
+<script>
+let bird;
+let pipes = [];
+let score = 0;
+let gameOver = false;
+let gravity = 0.6;
+let flap = -10;
+let pipeSpeed = 2;
+let pipeGap;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pipeGap = height / 4; // Boşluk ekran yüksekliğine göre dengeli
+  bird = new Bird();
+  pipes.push(new Pipe());
+}
+
+function draw() {
+  background(135, 206, 235); // Gökyüzü mavisi
+
+  if (!gameOver) {
+    // Kuşu güncelle
+    bird.update();
+    bird.show();
+
+    // Boruları güncelle
+    if (frameCount % Math.floor(width / 3) == 0) { // Ekran genişliğine göre dengeli aralık
+      pipes.push(new Pipe());
+    }
+
+    for (let i = pipes.length - 1; i >= 0; i--) {
+      pipes[i].show();
+      pipes[i].update();
+
+      // Çarpışma kontrolü
+      if (pipes[i].hits(bird)) {
+        gameOver = true;
+      }
+
+      // Puanlama
+      if (pipes[i].passes(bird)) {
+        score++;
+      }
+
+      // Boru ekran dışına çıkarsa sil
+      if (pipes[i].offscreen()) {
+        pipes.splice(i, 1);
+      }
+    }
+
+    // Skoru göster
+    textSize(32);
+    fill(255);
+    textAlign(LEFT);
+    text(score, 20, 40);
+  } else {
+    // Oyun bitti ekranı
+    textSize(48);
+    fill(255, 0, 0);
+    textAlign(CENTER);
+    text("Oyun Bitti!", width / 2, height / 2);
+    textSize(32);
+    text("Skor: " + score, width / 2, height / 2 + 50);
+    text("Yeniden Başlatmak İçin Dokun", width / 2, height / 2 + 100);
+  }
+}
+
+function touchStarted() {
+  if (gameOver) {
+    // Oyunu yeniden başlat
+    bird = new Bird();
+    pipes = [];
+    pipes.push(new Pipe());
+    score = 0;
+    gameOver = false;
+  } else {
+    // Kuşu zıplat
+    bird.up();
+  }
+  return false; // Varsayılan dokunma davranışını engelle
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  pipeGap = height / 4; // Ekran boyutu değiştiğinde boşluğu güncelle
+}
+
+class Bird {
+  constructor() {
+    this.y = height / 2;
+    this.x = 64;
+    this.velocity = 0;
+    this.size = 32;
+  }
+
+  update() {
+    this.velocity += gravity;
+    this.y += this.velocity;
+
+    // Yere veya tavana çarpma kontrolü
+    if (this.y > height - this.size / 2) {
+      this.y = height - this.size / 2;
+      this.velocity = 0;
+      gameOver = true;
+    }
+    if (this.y < this.size / 2) {
+      this.y = this.size / 2;
+      this.velocity = 0;
+    }
+  }
+
+  show() {
+    fill(255, 204, 0);
+    ellipse(this.x, this.y, this.size, this.size);
+  }
+
+  up() {
+    this.velocity = flap;
+  }
+}
+
+class Pipe {
+  constructor() {
+    this.spacing = pipeGap;
+    this.top = random(height / 4, (2 / 3) * height); // Daha dengeli yükseklik aralığı
+    this.bottom = height - (this.top + this.spacing);
+    this.x = width;
+    this.w = 50;
+    this.speed = pipeSpeed;
+    this.passed = false;
+  }
+
+  show() {
+    fill(255, 0, 0); // Borular kırmızı
+    // Üst boru
+    rect(this.x, 0, this.w, this.top, 0, 0, 10, 10);
+    // Alt boru
+    rect(this.x, height - this.bottom, this.w, this.bottom, 10, 10, 0, 0);
+  }
+
+  update() {
+    this.x -= this.speed;
+  }
+
+  offscreen() {
+    return this.x < -this.w;
+  }
+
+  hits(bird) {
+    if (bird.y - bird.size / 2 < this.top || bird.y + bird.size / 2 > height - this.bottom) {
+      if (bird.x + bird.size / 2 > this.x && bird.x - bird.size / 2 < this.x + this.w) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  passes(bird) {
+    if (!this.passed && bird.x > this.x + this.w) {
+      this.passed = true;
+      return true;
+    }
+    return false;
+  }
+}
+</script>
 </body>
 </html>
