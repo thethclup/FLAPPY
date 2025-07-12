@@ -38,14 +38,14 @@
         return gk_fileData[filename] || "";
         }
         </script><!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Flappy Bird Oyunu</title>
+  <title>Flappy Bird Game</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
   <style>
-    body { margin: 0; overflow: hidden; background: #87CEEB; }
+    body { margin: 0; overflow: hidden; }
     canvas { display: block; }
   </style>
 </head>
@@ -55,28 +55,59 @@ let bird;
 let pipes = [];
 let score = 0;
 let gameOver = false;
-let gravity = 0.8;
-let flap = -10;
-let pipeSpeed = 4;
+let gravity = 0.7; // Stable speed
+let flap = -11; // Jump strength
+let pipeSpeed = 2.5; // Stable pipe speed
 let pipeGap;
+let stars = [];
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  pipeGap = height / 4; // Boşluk ekran yüksekliğine göre dengeli
+  pipeGap = height / 4; // Gap scaled to screen height
   bird = new Bird();
   pipes.push(new Pipe());
+  // Create stars (30 for performance)
+  for (let i = 0; i < 30; i++) {
+    stars.push({
+      x: random(width),
+      y: random(height),
+      size: random(1, 3),
+      speed: random(0.3, 1.0) * (width / 800) // Speed scaled to screen width
+    });
+  }
 }
 
 function draw() {
-  background(135, 206, 235); // Gökyüzü mavisi
+  // Galaxy background: simple gradient and stars
+  background(10, 20, 50); // Dark blue base
+  let c1 = color(10, 20, 50); // Dark blue
+  let c2 = color(50, 0, 100); // Purplish
+  for (let y = 0; y < height; y += 20) {
+    let inter = map(y, 0, height, 0, 1);
+    let c = lerpColor(c1, c2, inter);
+    fill(c);
+    noStroke();
+    rect(0, y, width, 20);
+  }
+  // Draw and move stars
+  fill(255);
+  noStroke();
+  for (let star of stars) {
+    ellipse(star.x, star.y, star.size, star.size);
+    star.x -= star.speed;
+    if (star.x < 0) {
+      star.x = width;
+      star.y = random(height);
+    }
+  }
 
   if (!gameOver) {
-    // Kuşu güncelle
+    // Update bird
     bird.update();
     bird.show();
 
-    // Boruları güncelle
-    if (frameCount % Math.floor(width / 3) == 0) { // Ekran genişliğine göre dengeli aralık
+    // Update pipes
+    if (frameCount % Math.floor(width / 3) == 0) {
       pipes.push(new Pipe());
     }
 
@@ -84,57 +115,65 @@ function draw() {
       pipes[i].show();
       pipes[i].update();
 
-      // Çarpışma kontrolü
+      // Collision detection
       if (pipes[i].hits(bird)) {
         gameOver = true;
       }
 
-      // Puanlama
+      // Scoring
       if (pipes[i].passes(bird)) {
         score++;
       }
 
-      // Boru ekran dışına çıkarsa sil
+      // Remove pipe if offscreen
       if (pipes[i].offscreen()) {
         pipes.splice(i, 1);
       }
     }
 
-    // Skoru göster
+    // Display score
     textSize(32);
     fill(255);
+    stroke(0); // Strong shadow for readability
+    strokeWeight(5);
     textAlign(LEFT);
     text(score, 20, 40);
+    strokeWeight(0);
   } else {
-    // Oyun bitti ekranı
+    // Game over screen
+    fill(0, 0, 0, 220); // Darker overlay
+    rect(0, 0, width, height);
     textSize(48);
     fill(255, 0, 0);
+    stroke(255); // White shadow
+    strokeWeight(6);
     textAlign(CENTER);
-    text("GAME OVER", width / 2, height / 2);
+    text("Game Over!", width / 2, height / 2);
     textSize(32);
-    text("SCORE: " + score, width / 2, height / 2 + 50);
-    text("TAB TO RESTART", width / 2, height / 2 + 100);
+    text("Score: " + score, width / 2, height / 2 + 50);
+    text("Tap to Restart", width / 2, height / 2 + 100);
+    strokeWeight(0);
   }
 }
 
 function touchStarted() {
   if (gameOver) {
-    // GAME RESTART
+    // Restart game
     bird = new Bird();
     pipes = [];
     pipes.push(new Pipe());
     score = 0;
     gameOver = false;
   } else {
-    // Kuşu zıplat
+    // Make bird jump
     bird.up();
   }
-  return false; // Varsayılan dokunma davranışını engelle
+  return false; // Prevent default touch behavior
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  pipeGap = height / 4; // Ekran boyutu değiştiğinde boşluğu güncelle
+  pipeGap = height / 4; // Update gap when screen size changes
 }
 
 class Bird {
@@ -142,14 +181,14 @@ class Bird {
     this.y = height / 2;
     this.x = 64;
     this.velocity = 0;
-    this.size = 32;
+    this.size = 32; // Original size for yellow circle
   }
 
   update() {
     this.velocity += gravity;
     this.y += this.velocity;
 
-    // Yere veya tavana çarpma kontrolü
+    // Check collision with ground or ceiling
     if (this.y > height - this.size / 2) {
       this.y = height - this.size / 2;
       this.velocity = 0;
@@ -162,7 +201,8 @@ class Bird {
   }
 
   show() {
-    fill(255, 204, 0);
+    fill(255, 204, 0); // Yellow circle
+    noStroke();
     ellipse(this.x, this.y, this.size, this.size);
   }
 
@@ -174,7 +214,7 @@ class Bird {
 class Pipe {
   constructor() {
     this.spacing = pipeGap;
-    this.top = random(height / 4, (2 / 3) * height); // Daha dengeli yükseklik aralığı
+    this.top = random(height / 4, (2 / 3) * height);
     this.bottom = height - (this.top + this.spacing);
     this.x = width;
     this.w = 50;
@@ -183,10 +223,11 @@ class Pipe {
   }
 
   show() {
-    fill(255, 0, 0); // Borular kırmızı
-    // Üst boru
+    fill(255, 0, 0); // Red pipes
+    noStroke();
+    // Top pipe
     rect(this.x, 0, this.w, this.top, 0, 0, 10, 10);
-    // Alt boru
+    // Bottom pipe
     rect(this.x, height - this.bottom, this.w, this.bottom, 10, 10, 0, 0);
   }
 
@@ -199,8 +240,9 @@ class Pipe {
   }
 
   hits(bird) {
-    if (bird.y - bird.size / 2 < this.top || bird.y + bird.size / 2 > height - this.bottom) {
-      if (bird.x + bird.size / 2 > this.x && bird.x - bird.size / 2 < this.x + this.w) {
+    let birdSize = bird.size * 0.8; // Optimized collision box
+    if (bird.y - birdSize / 2 < this.top || bird.y + birdSize / 2 > height - this.bottom) {
+      if (bird.x + birdSize / 2 > this.x && bird.x - birdSize / 2 < this.x + this.w) {
         return true;
       }
     }
