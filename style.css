@@ -1,15 +1,12 @@
 body {
   margin: 0;
-  padding: 0;
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background: #111;
-  color: white;
+  background: linear-gradient(to bottom, #70c5ce, #ffffff);
+  overflow: hidden;
 }
-
 canvas {
-  background: #222;
   display: block;
-  margin: 0 auto;
-  border: 2px solid white;
+  margin: auto;
+  background: linear-gradient(to bottom, #87ceeb, #fff);
+  box-shadow: 0 0 20px rgba(0,0,0,0.3);
+  border-radius: 12px;
 }
