@@ -55,7 +55,7 @@ let bird;
 let pipes = [];
 let score = 0;
 let gameOver = false;
-let gravity = 0.6;
+let gravity = 0.8;
 let flap = -10;
 let pipeSpeed = 2;
 let pipeGap;
@@ -112,14 +112,14 @@ function draw() {
     textAlign(CENTER);
     text("GAME OVER", width / 2, height / 2);
     textSize(32);
-    text("Skor: " + score, width / 2, height / 2 + 50);
-    text("Yeniden Başlatmak İçin Dokun", width / 2, height / 2 + 100);
+    text("SCOR: " + score, width / 2, height / 2 + 50);
+    text("TAB TO RESTART", width / 2, height / 2 + 100);
   }
 }
 
 function touchStarted() {
   if (gameOver) {
-    // Oyunu yeniden başlat
+    // GAME RESTART
     bird = new Bird();
     pipes = [];
     pipes.push(new Pipe());
