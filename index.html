@@ -1,0 +1,446 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Flappy Bird MiniKit</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #0a1432;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      touch-action: none; /* Prevent default touch behaviors like pinch-zoom */
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100vh;
+    }
+    #ui {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      color: white;
+      pointer-events: none;
+    }
+    #score {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: bold;
+      text-shadow: 0 2px 2px rgba(0, 0, 0, 0.8);
+      padding: 10px;
+    }
+    #game-over {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      text-shadow: 0 3px 3px rgba(255, 255, 255, 0.8);
+    }
+    #game-over h1 {
+      font-size: 3rem;
+      color: #ff0000;
+      margin: 0;
+    }
+    #game-over p {
+      font-size: 1.5rem;
+      margin: 10px 0;
+    }
+    #restart-btn, #audio-toggle {
+      pointer-events: auto;
+      background: #6200ea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      border-radius: 5px;
+      margin: 10px;
+    }
+    #audio-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="game-over">
+      <h1>Game Over!</h1>
+      <p id="final-score">Score: 0</p>
+      <button id="restart-btn">Play Again</button>
+    </div>
+    <button id="audio-toggle">Audio: Off</button>
+  </div>
+  <script>
+    // Farcade SDK Placeholder (replace with actual SDK)
+    const FarcadeSDK = {
+      useFarcade: () => ({ isInstalled: true }),
+      sendNotification: (data) => console.log('Notification:', data),
+      addFrame: (frame) => console.log('Frame added:', frame),
+    };
+    const { useFarcade, sendNotification, addFrame } = FarcadeSDK;
+
+    // Canvas Setup
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const aspectRatio = 9 / 16;
+    let width, height;
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      if (width / height > aspectRatio) {
+        width = height * aspectRatio;
+      } else {
+        height = width / aspectRatio;
+      }
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Game State
+    let bird = { x: 64, y: height / 2, velocity: 0, size: 32 };
+    let pipes = [];
+    let score = 0;
+    let gameOver = false;
+    let gravity = 0.7;
+    let flap = -11;
+    let pipeSpeed = 2.5;
+    let pipeGap = height / 4;
+    let stars = [];
+    let particles = [];
+    let audioEnabled = false;
+    let lastPipeTime = 0;
+    let pipeInterval = 2000; // 2 seconds
+    let lastFlapTime = 0;
+    let flapCooldown = 150; // Reduced to 150ms for smoother response
+
+    // Background Layers (Parallax)
+    for (let i = 0; i < 30; i++) {
+      stars.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: Math.random() * 2 + 1,
+        speed: Math.random() * 0.5 + 0.3,
+      });
+    }
+
+    // Farcade SDK Integration
+    const { isInstalled } = useFarcade();
+    if (!isInstalled) {
+      alert('Farcade SDK not installed. Please install it.');
+    }
+
+    // Game Logic
+    class Pipe {
+      constructor() {
+        this.spacing = pipeGap;
+        this.top = Math.random() * (height / 2 - height / 3) + height / 3; // Balanced range: height/3 to height/2
+        this.bottom = height - (this.top + this.spacing);
+        this.x = width;
+        this.w = 50;
+        this.speed = pipeSpeed;
+        this.passed = false;
+      }
+
+      update() {
+        this.x -= this.speed;
+      }
+
+      draw() {
+        // White pipes
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.rect(this.x, 0, this.w, this.top);
+        ctx.rect(this.x, height - this.bottom, this.w, this.bottom);
+        ctx.fill();
+
+        // Purple stripes
+        ctx.fillStyle = '#800080';
+        const stripeHeight = 8;
+        const stripeSpacing = 50;
+        for (let y = stripeSpacing; y < this.top - stripeHeight; y += stripeSpacing) {
+          ctx.fillRect(this.x, y, this.w, stripeHeight);
+        }
+        for (let y = height - this.bottom; y < height - stripeHeight; y += stripeSpacing) {
+          ctx.fillRect(this.x, y, this.w, stripeHeight);
+        }
+      }
+
+      offscreen() {
+        return this.x < -this.w;
+      }
+
+      hits(bird) {
+        const birdSize = bird.size * 0.8;
+        if (bird.y - birdSize / 2 < this.top || bird.y + birdSize / 2 > height - this.bottom) {
+          if (bird.x + birdSize / 2 > this.x && bird.x - birdSize / 2 < this.x + this.w) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      passes(bird) {
+        if (!this.passed && bird.x > this.x + this.w) {
+          this.passed = true;
+          return true;
+        }
+        return false;
+      }
+    }
+
+    function createParticles(x, y) {
+      for (let i = 0; i < 20; i++) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 5,
+          vy: (Math.random() - 0.5) * 5,
+          size: Math.random() * 5 + 2,
+          life: 30,
+        });
+      }
+      if (navigator.vibrate) navigator.vibrate(50);
+    }
+
+    function update() {
+      if (gameOver) return;
+
+      // Update bird
+      bird.velocity += gravity;
+      bird.y += bird.velocity;
+      if (bird.y > height - bird.size / 2) {
+        bird.y = height - bird.size / 2;
+        bird.velocity = 0;
+        gameOver = true;
+        createParticles(bird.x, bird.y);
+        if (navigator.vibrate) navigator.vibrate(100);
+        try {
+          sendNotification({
+            title: 'Game Over!',
+            body: `Your score: ${score}. Share it!`,
+          });
+          addFrame({
+            title: 'Flappy Bird Score',
+            image: `https://your-vercel-url.vercel.app/api/og?score=${score}`,
+            buttons: [{ label: 'Play Again', action: 'post', target: '/' }],
+          });
+        } catch (err) {
+          console.error('Farcade SDK error:', err);
+        }
+      }
+      if (bird.y < bird.size / 2) {
+        bird.y = bird.size / 2;
+        bird.velocity = 0;
+      }
+
+      // Update pipes
+      const currentTime = performance.now();
+      if (currentTime - lastPipeTime > pipeInterval) {
+        pipes.push(new Pipe());
+        lastPipeTime = currentTime;
+      }
+      for (let i = pipes.length - 1; i >= 0; i--) {
+        pipes[i].update();
+        if (pipes[i].hits(bird)) {
+          gameOver = true;
+          createParticles(bird.x, bird.y);
+          if (navigator.vibrate) navigator.vibrate(100);
+          try {
+            sendNotification({
+              title: 'Game Over!',
+              body: `Your score: ${score}. Share it!`,
+            });
+            addFrame({
+              title: 'Flappy Bird Score',
+              image: `https://your-vercel-url.vercel.app/api/og?score=${score}`,
+              buttons: [{ label: 'Play Again', action: 'post', target: '/' }],
+            });
+          } catch (err) {
+            console.error('Farcade SDK error:', err);
+          }
+        }
+        if (pipes[i].passes(bird)) {
+          score++;
+          document.getElementById('score').textContent = score;
+        }
+        if (pipes[i].offscreen()) {
+          pipes.splice(i, 1);
+        }
+      }
+
+      // Update particles
+      particles = particles.filter(p => p.life > 0);
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+      });
+
+      // Update stars
+      stars.forEach(star => {
+        star.x -= star.speed;
+        if (star.x < 0) {
+          star.x = width;
+          star.y = Math.random() * height;
+        }
+      });
+    }
+
+    function draw() {
+      // Galaxy background
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#0a1432');
+      gradient.addColorStop(1, '#320064');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      // Stars (parallax)
+      ctx.fillStyle = '#ffffff';
+      stars.forEach(star => {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Pipes
+      pipes.forEach(pipe => pipe.draw());
+
+      // Bird
+      ctx.fillStyle = '#800080';
+      ctx.beginPath();
+      ctx.arc(bird.x, bird.y, bird.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(bird.x - bird.size / 4, bird.y - bird.size / 4, bird.size / 8, 0, Math.PI * 2);
+      ctx.arc(bird.x + bird.size / 4, bird.y - bird.size / 4, bird.size / 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bird.x, bird.y + bird.size / 8, bird.size / 4, 0, Math.PI);
+      ctx.stroke();
+
+      // Particles
+      ctx.fillStyle = '#ffffff';
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Game Over UI
+      document.getElementById('game-over').style.display = gameOver ? 'flex' : 'none';
+      if (gameOver) {
+        document.getElementById('final-score').textContent = `Score: ${score}`;
+      }
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input Handling
+    function flapBird() {
+      const currentTime = performance.now();
+      if (!gameOver && currentTime - lastFlapTime > flapCooldown) {
+        bird.velocity = flap;
+        if (navigator.vibrate) navigator.vibrate(30);
+        lastFlapTime = currentTime;
+      }
+    }
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) { // Only process single touch
+        flapBird();
+      }
+    });
+    canvas.addEventListener('touchmove', (e) => e.preventDefault()); // Prevent scrolling
+    canvas.addEventListener('touchend', (e) => e.preventDefault());
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        flapBird();
+      }
+    });
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      bird = { x: 64, y: height / 2, velocity: 0, size: 32 };
+      pipes = [];
+      score = 0;
+      gameOver = false;
+      lastPipeTime = performance.now();
+      document.getElementById('score').textContent = '0';
+    });
+    document.getElementById('audio-toggle').addEventListener('click', () => {
+      audioEnabled = !audioEnabled;
+      document.getElementById('audio-toggle').textContent = `Audio: ${audioEnabled ? 'On' : 'Off'}`;
+    });
+
+    // Start Game
+    gameLoop();
+  </script>
+</body>
+</html>
