@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract FlappyBirdScore {
+    address public owner;
+    
+    // Mapping to store high scores for each player
+    mapping(address => uint256) public highScores;
+    
+    // Mapping to track if a player has claimed their reward
+    mapping(address => bool) public rewardsClaimed;
+    
+    // Array to store all players for leaderboard
+    address[] public players;
+    
+    // Events
+    event ScoreUpdated(address indexed player, uint256 score);
+    event RewardClaimed(address indexed player, uint256 amount);
+    
+    // Modifiers
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    // Function to set/update player's score
+    function setScore(uint256 score) public {
+        require(score > 0, "Score must be greater than 0");
+        
+        // Only update if new score is higher
+        if (score > highScores[msg.sender]) {
+            // Add player to players array if first time
+            if (highScores[msg.sender] == 0) {
+                players.push(msg.sender);
+            }
+            
+            highScores[msg.sender] = score;
+            emit ScoreUpdated(msg.sender, score);
+        }
+    }
+    
+    // Function to get a player's high score
+    function getScore(address player) public view returns (uint256) {
+        return highScores[player];
+    }
+    
+    // Function to claim reward (testnet MON tokens)
+    function claimReward() public payable {
+        require(highScores[msg.sender] >= 10, "Need at least 10 points to claim reward");
+        require(!rewardsClaimed[msg.sender], "Reward already claimed");
+        require(address(this).balance >= 0.001 ether, "Contract has insufficient funds");
+        
+        rewardsClaimed[msg.sender] = true;
+        
+        // Calculate reward based on score
+        uint256 reward = calculateReward(highScores[msg.sender]);
+        
+        // Transfer reward to player
+        payable(msg.sender).transfer(reward);
+        
+        emit RewardClaimed(msg.sender, reward);
+    }
+    
+    // Internal function to calculate reward based on score
+    function calculateReward(uint256 score) internal pure returns (uint256) {
+        if (score >= 100) {
+            return 0.01 ether; // 0.01 MON for score >= 100
+        } else if (score >= 50) {
+            return 0.005 ether; // 0.005 MON for score >= 50
+        } else if (score >= 25) {
+            return 0.002 ether; // 0.002 MON for score >= 25
+        } else if (score >= 10) {
+            return 0.001 ether; // 0.001 MON for score >= 10
+        }
+        return 0;
+    }
+    
+    // Function to get leaderboard (top 10 players)
+    function getLeaderboard() public view returns (address[] memory, uint256[] memory) {
+        uint256 playerCount = players.length;
+        uint256 topCount = playerCount > 10 ? 10 : playerCount;
+        
+        address[] memory topPlayers = new address[](topCount);
+        uint256[] memory topScores = new uint256[](topCount);
+        
+        // Simple sorting algorithm to get top scores
+        for (uint256 i = 0; i < topCount; i++) {
+            uint256 maxScore = 0;
+            address maxPlayer = address(0);
+            uint256 maxIndex = 0;
+            
+            for (uint256 j = 0; j < playerCount; j++) {
+                if (highScores[players[j]] > maxScore) {
+                    bool alreadyIncluded = false;
+                    for (uint256 k = 0; k < i; k++) {
+                        if (topPlayers[k] == players[j]) {
+                            alreadyIncluded = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!alreadyIncluded) {
+                        maxScore = highScores[players[j]];
+                        maxPlayer = players[j];
+                        maxIndex = j;
+                    }
+                }
+            }
+            
+            if (maxPlayer != address(0)) {
+                topPlayers[i] = maxPlayer;
+                topScores[i] = maxScore;
+            }
+        }
+        
+        return (topPlayers, topScores);
+    }
+    
+    // Function to get total number of players
+    function getTotalPlayers() public view returns (uint256) {
+        return players.length;
+    }
+    
+    // Function to deposit funds to contract (for rewards)
+    function deposit() public payable {
+        // Anyone can deposit funds to the contract
+    }
+    
+    // Function to withdraw funds (owner only)
+    function withdraw() public onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+    
+    // Function to get contract balance
+    function getContractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+    
+    // Function to check if a player has claimed their reward
+    function hasClaimedReward(address player) public view returns (bool) {
+        return rewardsClaimed[player];
+    }
+    
+    // Fallback function to receive Ether
+    receive() external payable {
+        // Contract can receive Ether
+    }
+}
