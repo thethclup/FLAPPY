@@ -37,19 +37,25 @@
         }
         return gk_fileData[filename] || "";
         }
-        </script><!DOCTYPE html>
-<html charset="utf-8">
+        </script>```html
+<!DOCTYPE html>
+<html lang="en" charset="utf-8">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Multisynq Flappy Bird</title>
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@multisynq/client@2.0.0/dist/multisynq.min.js"></script>
     <script src="game.js" type="module" charset="utf-8"></script>
-    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
-    <div id="controls">
-        <p>Click or press Space to flap!</p>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <div id="ui">
+        <div id="score">0</div>
+        <button id="audio-toggle">Audio: Off</button>
     </div>
 </body>
 </html>
+```
